@@ -42,19 +42,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🛡️ Tool Copertura Portafoglio - Turbo Short")
-st.markdown("Interfaccia classica. Motore matematico reale.")
+st.markdown("Interfaccia classica. Motore matematico reale (attualmente anestetizzato).")
 
-# --- SIDEBAR: INPUT METRICHE AVANZATE (Il Rischio Reale) ---
+# --- SIDEBAR: INPUT METRICHE AVANZATE (Il Rischio Reale - AZZERATO DI DEFAULT) ---
 with st.sidebar:
     st.header("⚙️ Parametri di Stress (Realtà)")
     beta_port = st.number_input("Beta di Portafoglio", value=1.00, step=0.1)
-    trans_costs = st.number_input("Commissioni (Entry/Exit) %", value=0.10, step=0.05) / 100
-    slippage_exit = st.number_input("Slippage in Uscita (Spread) %", value=0.50, step=0.1) / 100
+    trans_costs = st.number_input("Commissioni (Entry/Exit) %", value=0.00, step=0.05) / 100
+    slippage_exit = st.number_input("Slippage in Uscita (Spread) %", value=0.00, step=0.1) / 100
     
     st.markdown("---")
     st.subheader("Costo di Mantenimento")
-    div_yield = st.number_input("Dividend Yield Implicito (%)", value=1.50, step=0.1) / 100
-    spread_mm = st.number_input("Margine Market Maker (%)", value=3.00, step=0.1) / 100
+    div_yield = st.number_input("Dividend Yield Implicito (%)", value=0.00, step=0.1) / 100
+    spread_mm = st.number_input("Margine Market Maker (%)", value=0.00, step=0.1) / 100
     
     st.markdown("---")
     volatility = st.number_input("Volatilità Annua (Monte Carlo) %", value=18.0, step=1.0) / 100
@@ -71,10 +71,10 @@ with t1_c1:
 with t1_c2:
     cambio = st.number_input("Tasso di Cambio 📝", value=1.15, step=0.01)
     multiplo = st.number_input("Multiplo 📝", value=0.01, step=0.001, format="%.4f")
-    euribor = st.number_input("Euribor 12M (%) 📝", value=2.456, step=0.1) / 100
+    euribor = st.number_input("Euribor 12M (%) 📝", value=2.46, step=0.01) / 100
 
 # Calcoli Tabella 1
-valore_nozionale_iniziale_generico = 6670.75 # Placeholder temporaneo per FV se manca input indice
+valore_nozionale_iniziale_generico = 6670.75 
 fair_value = ((strike - valore_nozionale_iniziale_generico) * multiplo) / cambio 
 premio = prezzo_iniziale_turbo - fair_value
 
@@ -109,7 +109,7 @@ if valore_ipotetico >= barriera_turbo_simulata:
     prezzo_turbo_simulato = 0.0
 else:
     prezzo_lordo = max(0, ((strike_aggiustato - valore_ipotetico) * multiplo) / cambio)
-    prezzo_turbo_simulato = prezzo_lordo * (1 - slippage_exit) # Inclusione Slippage
+    prezzo_turbo_simulato = prezzo_lordo * (1 - slippage_exit) 
 
 with t2_c3:
     st.markdown(f"<div class='output-label'>Prezzo Turbo Short (Netto Uscita)</div><div class='output-val'>€ {prezzo_turbo_simulato:.4f}</div><br>", unsafe_allow_html=True)
@@ -157,7 +157,7 @@ with t3_c3:
 st.markdown('</div>', unsafe_allow_html=True)
 
 
-# --- GRAFICI E SIMULAZIONI (Intatti) ---
+# --- GRAFICI E SIMULAZIONI ---
 st.markdown("---")
 tab1, tab2 = st.tabs(["📈 Analisi Visiva: Copertura e Rendimenti", "🎲 Stress Test Monte Carlo"])
 
