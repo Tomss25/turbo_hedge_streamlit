@@ -2,18 +2,33 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # --- CONFIGURAZIONE UI ---
 st.set_page_config(page_title="Turbo Hedging Pro | Reality Check", layout="wide")
 
+# CSS Corretto: Risolto il problema del testo invisibile e affinato il layout
 st.markdown("""
     <style>
-    .stApp { background-color: #F4F7F6; color: #1E1E1E; }
+    .stApp { background-color: #F8F9FA; color: #1E1E1E; }
     [data-testid="stSidebar"] { background-color: #1B2A47; }
-    [data-testid="stSidebar"] * { color: #FFFFFF !important; }
+    
+    /* Etichette e testo normale in bianco nella sidebar */
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label { 
+        color: #FFFFFF !important; 
+    }
+    
+    /* Input testuali in nero su sfondo bianco per visibilità perfetta */
+    [data-testid="stSidebar"] input { 
+        color: #1E1E1E !important; 
+        background-color: #FFFFFF !important; 
+        border-radius: 6px;
+        border: 1px solid #4A5568;
+    }
+    
     div[data-testid="metric-container"] {
-        background-color: #FFFFFF; border: 1px solid #E0E0E0;
-        padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        background-color: #FFFFFF; border: 1px solid #E2E8F0;
+        padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.02);
     }
     div.stButton > button:first-child {
         background-color: #1B2A47; color: white; border-radius: 8px; border: none; font-weight: bold; width: 100%;
@@ -23,7 +38,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🛡️ Tool Copertura Portafoglio - Turbo Short")
-st.markdown("Calcolo dell'hedge ratio reale, P&L netto con frizioni di mercato e stress test Monte Carlo.")
+st.markdown("Calcolo dell'hedge ratio reale, visualizzazione leva e stress test Monte Carlo.")
 
 # --- SIDEBAR: INPUT METRICHE AVANZATE ---
 with st.sidebar:
@@ -98,30 +113,91 @@ metric_cols[3].metric("Capitale Reale Richiesto", f"€ {capitale_investito:,.2f
 
 # --- SCENARIO ANALYSIS STATICA ---
 st.markdown("---")
-st.subheader("📈 Scenario Analysis (Netto Frizioni)")
-scenari_indice = np.linspace(valore_iniziale * 0.8, valore_iniziale * 1.15, 20)
+st.subheader("📈 Analisi Visiva: Copertura e Rendimenti")
+
+scenari_indice = np.linspace(valore_iniziale * 0.8, valore_iniziale * 1.15, 30)
 risultati_scenari = []
 
 for idx_val in scenari_indice:
+    # Rendimento Indice
+    rendimento_indice = (idx_val / valore_iniziale) - 1
+    
+    # Valori Assoluti
     if idx_val >= barriera_turbo_simulata:
+        p_netto = 0.0
+        v_hedge = 0.0
         pnl_hedge = -capitale_investito - costo_transazione_ingresso
+        rendimento_turbo = -1.0 # -100% perdita totale capitale hedge
     else:
         p_lordo = ((strike_aggiustato - idx_val) * multiplo) / cambio
         p_netto = p_lordo * (1 - slippage_exit)
         v_hedge = n_turbo_reale * p_netto
         pnl_hedge = v_hedge - capitale_investito - costo_transazione_ingresso - (v_hedge * trans_costs)
+        rendimento_turbo = (p_netto - prezzo_iniziale_turbo) / prezzo_iniziale_turbo
         
-    pnl_port = portafoglio_beta * ((idx_val / valore_iniziale) - 1)
-    risultati_scenari.append([idx_val, pnl_port, pnl_hedge, pnl_port + pnl_hedge])
+    pnl_port = portafoglio_beta * rendimento_indice
+    risultati_scenari.append([
+        idx_val, pnl_port, pnl_hedge, pnl_port + pnl_hedge, 
+        rendimento_indice * 100, rendimento_turbo * 100
+    ])
 
-df_scenari = pd.DataFrame(risultati_scenari, columns=['Indice', 'P&L Portafoglio', 'P&L Turbo', 'P&L Netto Hedgiato'])
+df_scenari = pd.DataFrame(risultati_scenari, columns=[
+    'Indice', 'P&L Portafoglio', 'P&L Turbo', 'P&L Netto Hedgiato',
+    'Ret_Indice_Pct', 'Ret_Turbo_Pct'
+])
 
-fig_scenario = go.Figure()
-fig_scenario.add_trace(go.Scatter(x=df_scenari['Indice'], y=df_scenari['P&L Netto Hedgiato'], mode='lines+markers', name='P&L Netto (Hedged)', line=dict(color='#1B2A47', width=3)))
-fig_scenario.add_trace(go.Scatter(x=df_scenari['Indice'], y=df_scenari['P&L Portafoglio'], mode='lines', name='P&L Portafoglio (Unhedged)', line=dict(dash='dash', color='#FF4B4B')))
-fig_scenario.add_vline(x=barriera_turbo_simulata, line_width=2, line_dash="dash", line_color="orange", annotation_text="KNOCK-OUT")
-fig_scenario.update_layout(height=400, margin=dict(l=0, r=0, t=30, b=0), plot_bgcolor='white', hovermode="x unified")
-st.plotly_chart(fig_scenario, use_container_width=True)
+tab1, tab2 = st.tabs(["💰 P&L Reale (Margini in €)", "⚖️ Leva e Rendimenti (%)"])
+
+with tab1:
+    fig_pnl = go.Figure()
+    # P&L Netto Hedgiato (Area)
+    fig_pnl.add_trace(go.Scatter(x=df_scenari['Indice'], y=df_scenari['P&L Netto Hedgiato'], 
+                                 mode='lines', name='P&L Netto (Hedged)', 
+                                 line=dict(color='#1B2A47', width=4, shape='spline'),
+                                 fill='tozeroy', fillcolor='rgba(27, 42, 71, 0.1)'))
+    
+    # P&L Portafoglio Unhedged
+    fig_pnl.add_trace(go.Scatter(x=df_scenari['Indice'], y=df_scenari['P&L Portafoglio'], 
+                                 mode='lines', name='P&L Portafoglio (Nudo)', 
+                                 line=dict(dash='dash', color='#EF4444', width=2, shape='spline')))
+    
+    # P&L Copertura
+    fig_pnl.add_trace(go.Scatter(x=df_scenari['Indice'], y=df_scenari['P&L Turbo'], 
+                                 mode='lines', name='P&L Turbo Short', 
+                                 line=dict(dash='dot', color='#10B981', width=2, shape='spline')))
+    
+    fig_pnl.add_vline(x=barriera_turbo_simulata, line_width=2, line_dash="dash", line_color="#F59E0B", annotation_text="KNOCK-OUT")
+    fig_pnl.add_hline(y=0, line_width=1, line_color="black")
+    
+    fig_pnl.update_layout(
+        template="plotly_white", height=450, margin=dict(l=0, r=0, t=30, b=0),
+        hovermode="x unified", yaxis_title="Profitto/Perdita (€)", xaxis_title="Valore Indice a Scadenza"
+    )
+    st.plotly_chart(fig_pnl, use_container_width=True)
+
+with tab2:
+    fig_ret = go.Figure()
+    
+    # Rendimento Turbo Short
+    fig_ret.add_trace(go.Scatter(x=df_scenari['Indice'], y=df_scenari['Ret_Turbo_Pct'], 
+                                 mode='lines', name='Rendimento Turbo (%)', 
+                                 line=dict(color='#10B981', width=3, shape='spline'),
+                                 fill='tozeroy', fillcolor='rgba(16, 185, 129, 0.1)'))
+    
+    # Rendimento Indice
+    fig_ret.add_trace(go.Scatter(x=df_scenari['Indice'], y=df_scenari['Ret_Indice_Pct'], 
+                                 mode='lines', name='Rendimento Indice (%)', 
+                                 line=dict(color='#EF4444', width=3, shape='spline')))
+    
+    fig_ret.add_vline(x=barriera_turbo_simulata, line_width=2, line_dash="dash", line_color="#F59E0B", annotation_text="KNOCK-OUT")
+    fig_ret.add_hline(y=0, line_width=1, line_color="black")
+    
+    fig_ret.update_layout(
+        template="plotly_white", height=450, margin=dict(l=0, r=0, t=30, b=0),
+        hovermode="x unified", yaxis_title="Rendimento (%)", xaxis_title="Valore Indice a Scadenza"
+    )
+    st.plotly_chart(fig_ret, use_container_width=True)
+    st.caption("Nota: Questo grafico dimostra la convessità della leva. Il Turbo guadagna percentuali a tre cifre sui ribassi, compensando la perdita lineare del portafoglio maggiore sottostante.")
 
 # --- MONTE CARLO SIMULATION ---
 st.markdown("---")
@@ -152,10 +228,14 @@ if st.button("Esegui 2000 Percorsi (Path-Dependent)"):
     with col_mc2:
         fig_mc = go.Figure()
         for i in range(min(100, paths)):
-            color = 'red' if knocked_out[i] else 'rgba(27, 42, 71, 0.1)'
+            color = '#EF4444' if knocked_out[i] else 'rgba(27, 42, 71, 0.05)'
             fig_mc.add_trace(go.Scatter(x=list(range(giorni)), y=S[:, i], mode='lines', line=dict(color=color, width=1), showlegend=False))
-        fig_mc.add_trace(go.Scatter(x=list(range(giorni)), y=strike_path, mode='lines', line=dict(color='orange', width=3, dash='dash'), name='Barriera Dinamica'))
-        fig_mc.update_layout(title="Primi 100 percorsi vs Barriera Erosiva", height=300, plot_bgcolor='white', margin=dict(l=0, r=0, t=30, b=0))
+        fig_mc.add_trace(go.Scatter(x=list(range(giorni)), y=strike_path, mode='lines', line=dict(color='#F59E0B', width=3, dash='dash'), name='Barriera Dinamica'))
+        
+        fig_mc.update_layout(
+            template="plotly_white", title="Primi 100 percorsi vs Barriera Erosiva", 
+            height=300, margin=dict(l=0, r=0, t=40, b=0)
+        )
         st.plotly_chart(fig_mc, use_container_width=True)
 
 # --- NOTA METODOLOGICA ---
